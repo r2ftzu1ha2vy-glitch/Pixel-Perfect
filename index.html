@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Logo Duel</title>
+<title>Pixel Perfect</title>
 <style>
   :root { --bg1:#0b0d1a; --neon:#7c8cff; --pink:#ff4d8d; --good:#3ddc97; --bad:#ff5d6c; --warn:#ffb84d; --text:#f2f3ff; --panel:rgba(255,255,255,.07); }
   * { box-sizing: border-box; }
@@ -32,7 +32,7 @@
 
   /* ---- main menu ---- */
   #menu { padding:6vh 7vw; justify-content:center; }
-  #menu h1 { margin:0; font-size:clamp(3rem, 11vw, 8rem); line-height:.9; font-style:italic; font-weight:900; letter-spacing:.02em;
+  #menu h1 { margin:0; font-size:clamp(2.6rem, 8vw, 6.6rem); line-height:.92; font-style:italic; font-weight:900; letter-spacing:.02em;
     background:linear-gradient(90deg,#fff,var(--neon) 55%,var(--pink)); -webkit-background-clip:text; background-clip:text; color:transparent;
     filter:drop-shadow(0 6px 24px rgba(124,140,255,.4)); }
   #menu .tag { margin:14px 0 30px; font-size:1.2rem; opacity:.8; }
@@ -114,7 +114,7 @@
 
   <!-- MAIN MENU -->
   <div id="menu" class="screen">
-    <h1>LOGO<br>DUEL</h1>
+    <h1>PIXEL<br>PERFECT</h1>
     <div class="tag">Rebuild the logo from memory. Beat the AI.</div>
     <div class="label">Difficulty</div>
     <div id="diffRow">
@@ -125,6 +125,8 @@
     <div class="menuOpts">
       <div><div class="label">Sound</div>
         <button id="soundBtn" class="ghostbtn" style="padding:10px 20px">On</button></div>
+      <div><div class="label">Music</div>
+        <button id="musicBtn" class="ghostbtn" style="padding:10px 20px">On</button></div>
       <div><div class="label">Round timer</div>
         <div id="timeNote" style="padding:10px 0;font-weight:800">0:30</div></div>
     </div>
@@ -272,6 +274,7 @@ function setInfo(t) { $("menuInfo").textContent = t; }
 function show(id) {
   ["menu", "settings", "game"].forEach(s => $(s).classList.toggle("hidden", s !== id));
   try { if (id === "menu") Demo.start(); else Demo.stop(); } catch (e) { /* demo not ready yet */ }
+  try { Music.play(id === "game" ? "battle" : "menu"); } catch (e) { /* music not ready yet */ }
 }
 
 /* ---------- Sound (synthesised, no files needed) ---------- */
@@ -327,6 +330,167 @@ const Sound = (() => {
     play(n) { try { if (on && fx[n]) fx[n](); } catch (e) {} },
     get on() { return on; },
     toggle() { on = !on; try { localStorage.setItem("ld_sound", on ? "1" : "0"); } catch (e) {} if (on) fx.click(); return on; }
+  };
+})();
+
+/* ---------- Music (procedural songs, no files needed) ---------- */
+const Music = (() => {
+  const VOL = 0.5;
+  let ctx = null, master = null, noiseBuf = null;
+  let on = true, want = null, target = null, timer = null, gen = 0;
+  let song = null, bar = 0, step = 0, nextTime = 0, sd = 0.15;
+  try { on = localStorage.getItem("ld_music") !== "0"; } catch (e) {}
+
+  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+
+  function init() {
+    if (ctx) return true;
+    const C = window.AudioContext || window.webkitAudioContext;
+    if (!C) return false;
+    ctx = new C();
+    master = ctx.createGain(); master.gain.value = 0.0001; master.connect(ctx.destination);
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return true;
+  }
+
+  function note(type, midi, t, dur, vol, o = {}) {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = type; osc.frequency.value = mtof(midi);
+    if (o.detune) osc.detune.value = o.detune;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + (o.a || 0.012));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    if (o.lp) { const f = ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = o.lp; osc.connect(f); f.connect(g); }
+    else osc.connect(g);
+    g.connect(master); osc.start(t); osc.stop(t + dur + 0.05);
+  }
+  function kick(t, vol) {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.frequency.setValueAtTime(150, t); osc.frequency.exponentialRampToValueAtTime(42, t + 0.13);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    osc.connect(g).connect(master); osc.start(t); osc.stop(t + 0.3);
+  }
+  function noiseHit(t, dur, vol, type, freq) {
+    const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = noiseBuf; f.type = type; f.frequency.value = freq;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(master); src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.02);
+  }
+  const snare = (t, vol) => { noiseHit(t, 0.16, vol, "bandpass", 1900); note("triangle", 190, t, 0.1, vol * 0.6); };
+  const hat = (t, vol, open) => noiseHit(t, open ? 0.2 : 0.045, vol, "highpass", 7500);
+
+  /* Menu song: laid-back A minor loop, 100 BPM, 8 bars */
+  const M_CH = [{ b: 45, c: [57, 60, 64] }, { b: 41, c: [53, 57, 60] }, { b: 48, c: [55, 60, 64] }, { b: 43, c: [50, 55, 59] }];
+  const M_A = [[[0,76],[4,74],[6,72],[8,74],[12,76]], [[0,77],[4,76],[6,72],[8,69],[12,72]],
+               [[0,79],[4,76],[6,72],[8,76],[12,79]], [[0,79],[4,77],[6,74],[8,71],[12,74]]];
+  const M_B = [[[0,72],[3,76],[6,79],[8,76],[12,72]], [[0,72],[3,77],[6,81],[8,77],[12,72]],
+               [[0,76],[3,79],[6,84],[8,79],[12,76]], [[0,74],[3,79],[6,83],[8,79],[10,74],[12,71]]];
+  const ARP = [0, 1, 2, 1, 2, 1, 0, 1];
+  function playMenu(bar, step, t) {
+    const ch = M_CH[bar % 4];
+    if (step === 0) ch.c.forEach((n, i) => note("triangle", n, t, 16 * sd, 0.04, { a: 0.25, detune: i * 4 }));
+    if (step === 0 || step === 8) note("sine", ch.b, t, 6 * sd, 0.17);
+    if (step === 14) note("sine", ch.b + 12, t, 2 * sd, 0.08);
+    if (step % 2 === 0) note("square", ch.c[ARP[(step / 2) % 8]] + 12, t, 1.7 * sd, 0.026, { lp: 2200 });
+    if (step === 0 || step === 10) kick(t, 0.14);
+    if (step === 12) snare(t, 0.035);
+    if (step % 4 === 2) hat(t, 0.02, false);
+    (bar < 4 ? M_A : M_B)[bar % 4].forEach(([st, m]) => { if (st === step) note("triangle", m, t, 3.4 * sd, 0.075, { a: 0.02 }); });
+  }
+
+  /* Battle song: driving D minor, 150 BPM, 8 bars */
+  const B_CH = [{ b: 50, c: [62, 65, 69] }, { b: 46, c: [58, 62, 65] }, { b: 48, c: [60, 64, 67] }, { b: 45, c: [57, 61, 64] }];
+  const B_ARP = [0, 1, 2, 1, 0, 1, 2, 1, 0, 1, 2, 1, 2, 1, 0, 1];
+  function playBattle(bar, step, t) {
+    const ch = B_CH[bar % 4];
+    if (step % 2 === 0) note("sawtooth", step === 6 || step === 14 ? ch.b + 12 : ch.b, t, 1.7 * sd, 0.085, { lp: 520 });
+    if (step % 4 === 0) kick(t, 0.24);
+    if (step === 4 || step === 12) snare(t, 0.15);
+    if (step % 2 === 0) hat(t, 0.03, false);
+    if (step === 14) hat(t, 0.045, true);
+    note("square", ch.c[B_ARP[step]] + 12, t, 0.95 * sd, 0.028, { lp: 3200 });
+    if (step === 0 || step === 6 || step === 10) ch.c.forEach(n => note("sawtooth", n, t, 2.4 * sd, 0.03, { lp: 1800 }));
+    if (bar >= 4 && (step === 0 || step === 8)) note("sawtooth", ch.c[2] + 24, t, 8 * sd, 0.028, { lp: 2600, a: 0.05, detune: 6 });
+    if (bar % 4 === 3 && step >= 12) kick(t, 0.2);   // fill into the loop
+  }
+
+  const SONGS = { menu: { bpm: 100, bars: 8, play: playMenu }, battle: { bpm: 150, bars: 8, play: playBattle } };
+
+  function tick() {
+    if (!ctx || !song) return;
+    while (nextTime < ctx.currentTime + 0.2) {
+      song.play(bar, step, nextTime);
+      nextTime += sd;
+      if (++step === 16) { step = 0; bar = (bar + 1) % song.bars; }
+    }
+  }
+
+  function startSong(name) {
+    const my = ++gen;
+    target = name;
+    const go = () => {
+      if (my !== gen) return;
+      if (timer) clearInterval(timer);
+      song = SONGS[name]; bar = 0; step = 0; sd = 60 / song.bpm / 4;
+      nextTime = ctx.currentTime + 0.1;
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setValueAtTime(0.0001, ctx.currentTime);
+      master.gain.linearRampToValueAtTime(VOL, ctx.currentTime + 0.5);
+      timer = setInterval(tick, 25);
+    };
+    if (timer) {   // crossfade: fade the old song out first
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.08);
+      setTimeout(go, 330);
+    } else go();
+  }
+
+  function stopSong() {
+    const my = ++gen;
+    target = null;
+    if (!ctx || !timer) return;
+    master.gain.cancelScheduledValues(ctx.currentTime);
+    master.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.12);
+    setTimeout(() => { if (my === gen && timer) { clearInterval(timer); timer = null; song = null; } }, 500);
+  }
+
+  function play(name) {
+    want = name;
+    if (!on) return;
+    if (!name) { stopSong(); return; }
+    if (target === name) return;
+    if (!init()) return;
+    if (ctx.state !== "running") {   // browsers need a click/tap first; unlock() retries on the first gesture
+      ctx.resume().then(() => { if (ctx.state === "running" && want === name && target !== name) startSong(name); }).catch(() => {});
+      return;
+    }
+    startSong(name);
+  }
+
+  function unlock() {
+    if (!on || !want) return;
+    if (!init()) return;
+    ctx.resume().then(() => { if (ctx.state === "running" && want && target !== want) startSong(want); }).catch(() => {});
+  }
+
+  document.addEventListener("pointerdown", unlock, true);
+  document.addEventListener("keydown", unlock, true);
+  document.addEventListener("visibilitychange", () => {
+    if (!ctx || !on) return;
+    if (document.hidden) ctx.suspend(); else ctx.resume();
+  });
+
+  return {
+    play, unlock,
+    get on() { return on; },
+    toggle() {
+      on = !on;
+      try { localStorage.setItem("ld_music", on ? "1" : "0"); } catch (e) {}
+      if (!on) stopSong(); else { const w = want; target = null; play(w); }
+      return on;
+    }
   };
 })();
 
@@ -574,6 +738,7 @@ function newMatch() {
   roundNo = 0; sYou = 0; sAI = 0;
   $("flash").style.display = "none";
   updateScore();
+  Music.play("battle");
   startRound();
 }
 
@@ -682,7 +847,7 @@ function submit() {
       $("flashTitle").textContent = won ? "YOU WIN!" : "AI WINS";
       $("flashTitle").style.color = won ? "var(--good)" : "var(--bad)";
       $("flashBody").textContent = `Final score: You ${sYou} - ${sAI} AI after ${roundNo} rounds.`;
-      setTimeout(() => { if (R === cur) { $("flash").style.display = "flex"; Sound.play(won ? "matchWin" : "matchLose"); } }, 900);
+      setTimeout(() => { if (R === cur) { $("flash").style.display = "flex"; Music.play(null); Sound.play(won ? "matchWin" : "matchLose"); } }, 900);
     } else {
       $("nextBtn").disabled = false;
     }
@@ -884,9 +1049,11 @@ $("playBtn").addEventListener("click", async () => {
   newMatch();
 });
 
-document.addEventListener("click", e => { if (e.target.closest("button, .btn, .dbtn") && e.target.id !== "soundBtn") Sound.play("click"); });
+document.addEventListener("click", e => { if (e.target.closest("button, .btn, .dbtn") && e.target.id !== "soundBtn" && e.target.id !== "musicBtn") Sound.play("click"); });
 function refreshSoundBtn() { $("soundBtn").textContent = Sound.on ? "On" : "Off"; }
-$("soundBtn").addEventListener("click", () => { Sound.toggle(); refreshSoundBtn(); });
+$("soundBtn").addEventListener("click", () => { Sound.toggle(); function refreshMusicBtn() { $("musicBtn").textContent = Music.on ? "On" : "Off"; }
+$("musicBtn").addEventListener("click", () => { Music.toggle(); refreshMusicBtn(); });
+refreshSoundBtn(); refreshMusicBtn(); });
 function refreshTimeNote() { $("timeNote").textContent = fmtTime(TIME_LIMIT[currentDiff]); }
 refreshSoundBtn();
 
@@ -953,6 +1120,7 @@ $("filesIn").addEventListener("change", async e => {
 (async function init() {
   markDiff();
   refreshTimeNote();
+  Music.play("menu");
   await preloadAll();
   Demo.start();
 })();
