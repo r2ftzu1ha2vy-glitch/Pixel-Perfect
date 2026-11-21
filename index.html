@@ -43,6 +43,7 @@
   .dbtn[data-d="medium"].active { background:rgba(255,184,77,.22); border-color:var(--warn); box-shadow:0 5px 0 #a8731e; }
   .dbtn[data-d="hard"].active   { background:rgba(255,93,108,.22); border-color:var(--bad);  box-shadow:0 5px 0 #a8323e; }
   #menuBtns { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  .menuOpts { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-end; margin-bottom:28px; }
   #menuInfo { margin-top:22px; min-height:1.4em; opacity:.7; font-size:.95rem; }
 
   /* ---- settings ---- */
@@ -65,6 +66,10 @@
     text-shadow:0 0 24px rgba(124,140,255,.6); }
   #roundInfo { margin-top:4px; font-size:.85rem; letter-spacing:.18em; text-transform:uppercase; opacity:.75; }
   #roundInfo.win { color:var(--good); opacity:1; } #roundInfo.lose { color:var(--bad); opacity:1; } #roundInfo.tie { color:var(--warn); opacity:1; }
+  #clock { margin-top:6px; font-size:1.5rem; font-weight:900; font-variant-numeric:tabular-nums; letter-spacing:.08em; opacity:.55; transition:color .2s; }
+  #clock.run { opacity:1; }
+  #clock.low { color:var(--bad); opacity:1; animation:pulse .5s ease-in-out infinite alternate; }
+  @keyframes pulse { from { transform:scale(1); } to { transform:scale(1.18); } }
   #arena { flex:1; min-height:0; display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:6px 14px 8px; }
   .pane { position:relative; min-width:0; min-height:0; border-radius:18px; overflow:hidden; display:flex;
           box-shadow:0 0 0 3px rgba(255,255,255,.12), 0 14px 40px rgba(0,0,0,.45); }
@@ -110,6 +115,19 @@
       <button class="dbtn" data-d="medium">Medium</button>
       <button class="dbtn" data-d="hard">Hard</button>
     </div>
+    <div class="menuOpts">
+      <div><div class="label">Preview</div>
+        <select id="prevSel">
+          <option value="0">No preview</option>
+          <option value="3" selected>3 seconds</option>
+          <option value="6">6 seconds</option>
+          <option value="10">10 seconds</option>
+        </select></div>
+      <div><div class="label">Sound</div>
+        <button id="soundBtn" class="ghostbtn" style="padding:10px 20px">On</button></div>
+      <div><div class="label">Round timer</div>
+        <div id="timeNote" style="padding:10px 0;font-weight:800">0:30</div></div>
+    </div>
     <div id="menuBtns">
       <button id="playBtn" class="big">Play</button>
       <button id="settingsBtn" class="ghostbtn">Settings</button>
@@ -133,12 +151,6 @@
           <option value="4x3">4 x 3</option>
           <option value="4x4">4 x 4</option>
         </select></div>
-      <div><div class="label">Preview</div>
-        <select id="prevSel">
-          <option value="0" selected>None</option>
-          <option value="3">3 seconds</option>
-          <option value="6">6 seconds</option>
-        </select></div>
     </div>
     <div>
       <div class="label">Logo images</div>
@@ -155,7 +167,7 @@
   <div id="game" class="screen hidden">
     <div id="hud">
       <div class="side you">YOU <div class="pips" id="pYou"></div></div>
-      <div id="hudMid"><div id="logoName"></div><div id="roundInfo"></div></div>
+      <div id="hudMid"><div id="logoName"></div><div id="roundInfo"></div><div id="clock"></div></div>
       <div class="side ai">AI <div class="pips" id="pAI"></div></div>
     </div>
     <div id="arena">
@@ -213,7 +225,8 @@ function randomPlacement() {
 }
 const MIN_SCATTER = 40;                // pieces start at least this far from the answer
 const MAXD = 80;                       // a piece this far (or more) off scores 0
-const DIFF = { easy: 18, medium: 9, hard: 4 };   // AI placement error (logo units)
+const DIFF = { easy: 11, medium: 5.5, hard: 2.2 };   // AI placement error (logo units): lower = stronger AI
+const TIME_LIMIT = { easy: 30, medium: 60, hard: 90 };   // seconds per round
 const SPLITS = { "2x1":[2,1], "1x2":[1,2], "2x2":[2,2], "3x2":[3,2], "2x3":[2,3], "3x3":[3,3], "4x3":[4,3], "3x4":[3,4], "4x4":[4,4] };
 // "Auto" cut style picks from these by difficulty. Hard uses many small pieces and
 // uneven cut lines, so pieces no longer line up with the logo's own shapes.
@@ -242,6 +255,62 @@ function setInfo(t) { $("menuInfo").textContent = t; }
 function show(id) {
   ["menu", "settings", "game"].forEach(s => $(s).classList.toggle("hidden", s !== id));
 }
+
+/* ---------- Sound (synthesised, no files needed) ---------- */
+const Sound = (() => {
+  let ctx = null, on = true;
+  try { on = localStorage.getItem("ld_sound") !== "0"; } catch (e) {}
+  function ac() {
+    if (!on) return null;
+    if (!ctx) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; ctx = new C(); }
+    if (ctx.state === "suspended") ctx.resume();
+    return ctx;
+  }
+  function tone(f, dur, o = {}) {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime + (o.at || 0);
+    const osc = c.createOscillator(), g = c.createGain();
+    osc.type = o.type || "sine";
+    osc.frequency.setValueAtTime(f, t);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + dur);
+    const v = o.vol == null ? 0.16 : o.vol;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g).connect(c.destination);
+    osc.start(t); osc.stop(t + dur + 0.05);
+  }
+  function noise(dur, o = {}) {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime + (o.at || 0), n = Math.floor(c.sampleRate * dur);
+    const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    src.buffer = buf; f.type = "bandpass"; f.frequency.value = o.freq || 1800;
+    g.gain.value = o.vol == null ? 0.18 : o.vol;
+    src.connect(f).connect(g).connect(c.destination); src.start(t);
+  }
+  const fx = {
+    click:     () => tone(620, 0.06, { type: "triangle", vol: 0.1 }),
+    grab:      () => tone(340, 0.07, { type: "triangle", to: 520, vol: 0.12 }),
+    drop:      () => { tone(220, 0.1, { type: "sine", to: 120, vol: 0.2 }); noise(0.05, { freq: 900, vol: 0.08 }); },
+    scatter:   () => { noise(0.35, { freq: 1200, vol: 0.2 }); tone(300, 0.25, { type: "sawtooth", to: 90, vol: 0.06 }); },
+    tick:      () => tone(900, 0.05, { type: "square", vol: 0.07 }),
+    warn:      () => tone(1200, 0.12, { type: "square", vol: 0.1 }),
+    submit:    () => { noise(0.25, { freq: 2500, vol: 0.12 }); tone(500, 0.2, { type: "triangle", to: 900, vol: 0.1 }); },
+    roundWin:  () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.18, { at: i * 0.09, type: "triangle", vol: 0.15 })),
+    roundLose: () => [392, 330, 262].forEach((f, i) => tone(f, 0.22, { at: i * 0.12, type: "sawtooth", vol: 0.09 })),
+    tie:       () => { tone(440, 0.15, { type: "triangle" }); tone(440, 0.15, { at: 0.18, type: "triangle" }); },
+    matchWin:  () => [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, 0.22, { at: i * 0.11, type: "triangle", vol: 0.16 })),
+    matchLose: () => [330, 262, 220, 165].forEach((f, i) => tone(f, 0.32, { at: i * 0.18, type: "sawtooth", vol: 0.09 })),
+    timeup:    () => { tone(180, 0.35, { type: "sawtooth", to: 90, vol: 0.14 }); }
+  };
+  return {
+    play(n) { try { if (on && fx[n]) fx[n](); } catch (e) {} },
+    get on() { return on; },
+    toggle() { on = !on; try { localStorage.setItem("ld_sound", on ? "1" : "0"); } catch (e) {} if (on) fx.click(); return on; }
+  };
+})();
 
 /* ---------- Logo catalog ---------- */
 let catalog = [];
@@ -439,10 +508,47 @@ function updateScore() {
   renderPips($("pAI"), sAI);
 }
 
+function fmtTime(sec) {
+  sec = Math.max(0, Math.ceil(sec));
+  return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+}
+
+function setClock(text, cls) {
+  const el = $("clock");
+  el.textContent = text;
+  el.className = cls || "";
+}
+
+function startClock(cur) {
+  const limit = TIME_LIMIT[currentDiff] || 60;
+  const end = performance.now() + limit * 1000;
+  let lastShown = -1;
+  setClock(fmtTime(limit), "run");
+  cur.clock = setInterval(() => {
+    if (R !== cur || cur.phase !== "play") { clearInterval(cur.clock); return; }
+    const left = Math.max(0, (end - performance.now()) / 1000);
+    const shown = Math.ceil(left);
+    if (shown !== lastShown) {
+      lastShown = shown;
+      setClock(fmtTime(left), shown <= 10 ? "low" : "run");
+      if (shown <= 5 && shown > 0) Sound.play("warn");
+      else if (shown <= 10 && shown > 5) Sound.play("tick");
+    }
+    if (left <= 0) {
+      clearInterval(cur.clock);
+      Sound.play("timeup");
+      setMsg("Time's up!");
+      submit();
+    }
+  }, 100);
+}
+
 function stopRound() {
   cancelDrag();
   if (R && R.timer) clearInterval(R.timer);
+  if (R && R.clock) clearInterval(R.clock);
   R = null;
+  setClock("", "");
 }
 
 function newMatch() {
@@ -470,6 +576,7 @@ function startRound() {
   R = { id, logo, cols, rows, bounds, n, phase: "preview", humanPos: zeros(n), aiPos: zeros(n),
         scatter: null, timer: null, dragging: null };
   $("logoName").textContent = logo.name;
+  setClock(fmtTime(TIME_LIMIT[currentDiff] || 60), "");
   setRoundInfo(`Round ${id}  ·  First to ${WIN_SCORE}`);
   const place = randomPlacement();
   R.off = place.off; R.lim = place.lim;
@@ -502,6 +609,8 @@ function beginPlay() {
   R.phase = "play";
   $("submitBtn").disabled = false; $("resetBtn").disabled = false;
   setMsg("Drag the pieces to rebuild the logo, then Submit.");
+  Sound.play("scatter");
+  startClock(R);
 }
 
 function animateAI(cur, from, to, ms, done) {
@@ -522,6 +631,9 @@ function submit() {
   cancelDrag();
   const cur = R;
   cur.phase = "judge";
+  if (cur.clock) clearInterval(cur.clock);
+  setClock($("clock").textContent, "");
+  Sound.play("submit");
   $("submitBtn").disabled = true; $("resetBtn").disabled = true;
   const humanAcc = accuracy(cur.humanPos);
   $("accYou").textContent = humanAcc.toFixed(1) + "%";
@@ -542,9 +654,9 @@ function submit() {
     cur.phase = "done";
 
     const diff = humanAcc - aiAcc;
-    if (Math.abs(diff) < 0.05) { setRoundInfo("Tie. No point", "tie"); setMsg("Dead heat. Next round."); }
-    else if (diff > 0) { sYou++; setRoundInfo("You win the round!", "win"); setMsg(`${humanAcc.toFixed(1)}% beats ${aiAcc.toFixed(1)}%.`); }
-    else { sAI++; setRoundInfo("AI wins the round", "lose"); setMsg(`${aiAcc.toFixed(1)}% beats ${humanAcc.toFixed(1)}%.`); }
+    if (Math.abs(diff) < 0.05) { Sound.play("tie"); setRoundInfo("Tie. No point", "tie"); setMsg("Dead heat. Next round."); }
+    else if (diff > 0) { Sound.play("roundWin"); sYou++; setRoundInfo("You win the round!", "win"); setMsg(`${humanAcc.toFixed(1)}% beats ${aiAcc.toFixed(1)}%.`); }
+    else { Sound.play("roundLose"); sAI++; setRoundInfo("AI wins the round", "lose"); setMsg(`${aiAcc.toFixed(1)}% beats ${humanAcc.toFixed(1)}%.`); }
     updateScore();
 
     if (sYou >= WIN_SCORE || sAI >= WIN_SCORE) {
@@ -552,7 +664,7 @@ function submit() {
       $("flashTitle").textContent = won ? "YOU WIN!" : "AI WINS";
       $("flashTitle").style.color = won ? "var(--good)" : "var(--bad)";
       $("flashBody").textContent = `Final score: You ${sYou} - ${sAI} AI after ${roundNo} rounds.`;
-      setTimeout(() => { if (R === cur) $("flash").style.display = "flex"; }, 900);
+      setTimeout(() => { if (R === cur) { $("flash").style.display = "flex"; Sound.play(won ? "matchWin" : "matchLose"); } }, 900);
     } else {
       $("nextBtn").disabled = false;
     }
@@ -579,6 +691,7 @@ function onDown(e) {
                  ox: R.humanPos[i].x, oy: R.humanPos[i].y, raf: 0, last: e };
   el.classList.add("dragging");
   document.body.classList.add("grabbing");
+  Sound.play("grab");
   svg.addEventListener("pointermove", onMove);
   svg.addEventListener("pointerup", onUp);
   svg.addEventListener("pointercancel", onUp);
@@ -620,6 +733,7 @@ function onUp(e) {
   const d = R && R.dragging;
   if (!d || (e.pointerId !== undefined && e.pointerId !== d.pid)) return;
   endDrag(d, $("boardYou"));
+  Sound.play("drop");
 }
 
 // Abort a drag cleanly when a round ends or restarts mid-drag.
@@ -644,6 +758,7 @@ function markDiff() {
 document.querySelectorAll(".dbtn").forEach(b => b.addEventListener("click", async () => {
   currentDiff = b.dataset.d;
   markDiff();
+  refreshTimeNote();
   await selectDifficulty(currentDiff);
 }));
 
@@ -654,6 +769,12 @@ $("playBtn").addEventListener("click", async () => {
   show("game");
   newMatch();
 });
+
+document.addEventListener("click", e => { if (e.target.closest("button, .btn, .dbtn") && e.target.id !== "soundBtn") Sound.play("click"); });
+function refreshSoundBtn() { $("soundBtn").textContent = Sound.on ? "On" : "Off"; }
+$("soundBtn").addEventListener("click", () => { Sound.toggle(); refreshSoundBtn(); });
+function refreshTimeNote() { $("timeNote").textContent = fmtTime(TIME_LIMIT[currentDiff]); }
+refreshSoundBtn();
 
 $("settingsBtn").addEventListener("click", () => show("settings"));
 $("backBtn").addEventListener("click", () => show("menu"));
@@ -717,6 +838,7 @@ $("filesIn").addEventListener("change", async e => {
 
 (async function init() {
   markDiff();
+  refreshTimeNote();
   await preloadAll();
 })();
 </script>
