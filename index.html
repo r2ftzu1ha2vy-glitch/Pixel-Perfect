@@ -77,7 +77,9 @@
   .pane .acc:empty { display:none; }
   svg.board { flex:1; min-width:0; min-height:0; width:100%; height:100%; display:block; user-select:none; touch-action:none; }
   .piece.mine { cursor:grab; }
-  .piece.dragging { cursor:grabbing; filter:drop-shadow(0 6px 8px rgba(0,0,0,.5)); }
+  .piece.mine:hover { filter:drop-shadow(0 0 5px rgba(124,140,255,.9)); }
+  .piece.dragging { cursor:grabbing; filter:drop-shadow(0 8px 10px rgba(0,0,0,.55)); }
+  body.grabbing, body.grabbing * { cursor:grabbing !important; }
   #bar { display:flex; align-items:center; gap:14px; padding:6px 18px 16px; }
   #msg { flex:1; opacity:.85; font-size:1rem; min-width:0; }
   @media (max-width:760px) {
@@ -162,6 +164,7 @@
     <div id="bar">
       <button id="menuBtn" class="ghostbtn">Menu</button>
       <div id="msg"></div>
+      <button id="resetBtn" class="ghostbtn" disabled>Reset</button>
       <button id="submitBtn" disabled>Submit</button>
       <button id="nextBtn" disabled>Next round</button>
     </div>
@@ -186,9 +189,9 @@
 // Used when the page can't list the assets folders itself (opened straight from disk).
 // Edit these to match your file names, or use "Load assets folder" in Settings.
 const ASSET_FILES = {
-  easy:   ["assets/easy/Apple_Logo.svg", "assets/easy/Nike.png", "assets/easy/YouTube.png"],
-  medium: ["assets/medium/Netflix.png", "assets/medium/WhatsApp.png"],
-  hard:   []
+  easy:   ["Apple_Logo.svg", "Netflix_Logo.webp", "Nike_Logo.webp", "Whatsapp_Logo.png", "Youtube_Logo.png"].map(f => "assets/easy/" + f),
+  medium: ["Android_Logo.png", "Discord_Logo.png", "SnapChat_Logo.jpg", "Spotify_Logo.png", "Windows_Logo.png"].map(f => "assets/medium/" + f),
+  hard:   ["Airbnb_Logo.webp", "Google_Drive.webp", "Mastercard_Logo.webp", "Mitsubishi_Logo.webp", "Pepsi_Logo.webp"].map(f => "assets/hard/" + f)
 };
 const WIN_SCORE = 3;
 const S = 0.8;                         // logo scale on the board
@@ -233,7 +236,7 @@ function imageLogo(src, name, w, h) {
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
         const cid = `${prefix}_${r}_${c}`;
         out.push(`<clipPath id="${cid}"><rect x="${x0 + c * pw}" y="${y0 + r * ph}" width="${pw}" height="${ph}"/></clipPath>` +
-                 `<g clip-path="url(#${cid})"><image href="${esc(src)}" x="${x0}" y="${y0}" width="${iw}" height="${ih}" preserveAspectRatio="none"/></g>`);
+                 `<g clip-path="url(#${cid})"><rect class="hit" x="${x0 + c * pw}" y="${y0 + r * ph}" width="${pw}" height="${ph}" fill="#fff" fill-opacity="0.001"/><image href="${esc(src)}" x="${x0}" y="${y0}" width="${iw}" height="${ih}" preserveAspectRatio="none"/></g>`);
       }
       return out;
     }
@@ -264,26 +267,31 @@ function nameFromFile(f) {
 function probe(src, name) {
   return new Promise(res => {
     const im = new Image();
-    im.onload = () => res(imageLogo(src, name, im.naturalWidth || 200, im.naturalHeight || 200));
+    im.onload = async () => {
+      try { await im.decode(); } catch (e) { /* decode is best effort */ }
+      res(imageLogo(src, name, im.naturalWidth || 200, im.naturalHeight || 200));
+    };
     im.onerror = () => res(null);
     im.src = src;
   });
 }
 
 async function discoverAssets(diff) {
-  let list = [];
+  const list = [];
   try {
     const r = await fetch(`assets/${diff}/`);
     if (r.ok) {
       const t = await r.text();
-      const re = /href="([^"?#]+\.(?:png|jpe?g|svg|webp|gif))"/gi;
+      const re = /href="([^"?#]+\.(?:png|jpe?g|svg|webp|gif|avif|bmp))"/gi;
       let m;
       while ((m = re.exec(t))) list.push(`assets/${diff}/` + decodeURIComponent(m[1]).split("/").pop());
     }
-  } catch (e) { /* opened from disk: fall back to the list */ }
-  if (!list.length) list = (ASSET_FILES[diff] || []).slice();
-  list = Array.from(new Set(list));
-  return (await Promise.all(list.map(f => probe(f, nameFromFile(f))))).filter(Boolean);
+  } catch (e) { /* opened from disk or no directory listing: the built-in list covers it */ }
+  // Always merge with the known file list so hosts without directory listing still load everything.
+  (ASSET_FILES[diff] || []).forEach(f => list.push(f));
+  const seen = new Set();
+  const unique = list.filter(f => { const k = f.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  return (await Promise.all(unique.map(f => probe(f, nameFromFile(f))))).filter(Boolean);
 }
 
 async function logosFromFiles(files) {
@@ -306,8 +314,26 @@ function useDifficulty(diff, logos, fallbackMsg) {
 }
 
 async function selectDifficulty(diff) {
-  if (loaded[diff]) useDifficulty(diff, loaded[diff]);
-  else useDifficulty(diff, await discoverAssets(diff));
+  if (!loaded[diff]) loaded[diff] = await discoverAssets(diff);
+  useDifficulty(diff, loaded[diff]);
+  updateCounts();
+}
+
+function updateCounts() {
+  document.querySelectorAll(".dbtn").forEach(b => {
+    const n = loaded[b.dataset.d];
+    b.textContent = b.dataset.d.charAt(0).toUpperCase() + b.dataset.d.slice(1) + (n ? ` · ${n.length}` : "");
+  });
+}
+
+// Load every difficulty up front so all images are ready before the first round.
+async function preloadAll() {
+  setInfo("Loading all logos...");
+  await Promise.all(LEVELS.map(async l => { if (!loaded[l]) loaded[l] = await discoverAssets(l); }));
+  updateCounts();
+  const total = LEVELS.reduce((t, l) => t + (loaded[l] ? loaded[l].length : 0), 0);
+  useDifficulty(currentDiff, loaded[currentDiff], undefined);
+  setInfo(`${total} logos loaded (${LEVELS.map(l => `${l} ${loaded[l].length}`).join(", ")}).`);
 }
 
 function nextLogo() {
@@ -326,7 +352,17 @@ function renderBoard(svg, logo, pieces, mine) {
     <g class="logoGroup" transform="translate(${OFFSET.x},${OFFSET.y}) scale(${S})">
     ${pieces.map((p, i) => `<g class="piece${mine ? " mine" : ""}" data-i="${i}">${p}</g>`).join("")}
     </g>`;
-  if (mine) svg.querySelectorAll(".piece").forEach(el => el.addEventListener("pointerdown", onDown));
+  if (mine) {
+    svg.querySelectorAll(".piece").forEach(el => {
+      if (!el.querySelector(".hit")) {          // vector pieces: add a padded grab area from their bounding box
+        try {
+          const b = el.getBBox(), pad = 6;
+          el.insertAdjacentHTML("afterbegin", `<rect class="hit" x="${b.x - pad}" y="${b.y - pad}" width="${b.width + pad * 2}" height="${b.height + pad * 2}" fill="#fff" fill-opacity="0.001"/>`);
+        } catch (err) { /* getBBox can fail on hidden elements */ }
+      }
+      el.addEventListener("pointerdown", onDown);
+    });
+  }
 }
 
 function applyPos(svg, pos) {
@@ -371,6 +407,7 @@ function updateScore() {
 }
 
 function stopRound() {
+  cancelDrag();
   if (R && R.timer) clearInterval(R.timer);
   R = null;
 }
@@ -402,7 +439,7 @@ function startRound() {
   renderBoard($("boardYou"), logo, hp, true);
   renderBoard($("boardAI"), logo, ap, false);
   $("accYou").textContent = ""; $("accAI").textContent = "";
-  $("submitBtn").disabled = true; $("nextBtn").disabled = true;
+  $("submitBtn").disabled = true; $("resetBtn").disabled = true; $("nextBtn").disabled = true;
 
   const secs = +$("prevSel").value;
   if (secs > 0) {
@@ -426,7 +463,7 @@ function beginPlay() {
   applyPos($("boardYou"), R.humanPos);
   applyPos($("boardAI"), R.aiPos);
   R.phase = "play";
-  $("submitBtn").disabled = false;
+  $("submitBtn").disabled = false; $("resetBtn").disabled = false;
   setMsg("Drag the pieces to rebuild the logo, then Submit.");
 }
 
@@ -445,9 +482,10 @@ function animateAI(cur, from, to, ms, done) {
 
 function submit() {
   if (!R || R.phase !== "play") return;
+  cancelDrag();
   const cur = R;
   cur.phase = "judge";
-  $("submitBtn").disabled = true;
+  $("submitBtn").disabled = true; $("resetBtn").disabled = true;
   const humanAcc = accuracy(cur.humanPos);
   $("accYou").textContent = humanAcc.toFixed(1) + "%";
   setMsg("AI is placing its pieces...");
@@ -480,45 +518,80 @@ function submit() {
 }
 
 /* ---------- Dragging (your board only) ---------- */
-function toSvgPoint(svg, e) {
+// Pointer capture lives on the SVG itself (not the piece) so re-ordering pieces in the DOM
+// can never drop the drag, and the piece follows the cursor even outside the board.
+function onDown(e) {
+  if (!R || R.phase !== "play" || R.dragging) return;
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  const svg = $("boardYou"), el = e.currentTarget, i = +el.dataset.i;
+  e.preventDefault();
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return;
+  const inv = ctm.inverse();
   const pt = svg.createSVGPoint();
   pt.x = e.clientX; pt.y = e.clientY;
-  return pt.matrixTransform(svg.getScreenCTM().inverse());
-}
-
-function onDown(e) {
-  if (!R || R.phase !== "play") return;
-  const el = e.currentTarget, i = +el.dataset.i, svg = $("boardYou");
-  e.preventDefault();
-  el.setPointerCapture(e.pointerId);
-  const start = toSvgPoint(svg, e);
-  R.dragging = { i, el, sx: start.x, sy: start.y, ox: R.humanPos[i].x, oy: R.humanPos[i].y };
+  const start = pt.matrixTransform(inv);
+  el.parentNode.appendChild(el);              // bring to front BEFORE capturing
+  try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+  R.dragging = { i, el, pid: e.pointerId, inv, pt, sx: start.x, sy: start.y,
+                 ox: R.humanPos[i].x, oy: R.humanPos[i].y, raf: 0, last: e };
   el.classList.add("dragging");
-  el.parentNode.appendChild(el);
-  el.addEventListener("pointermove", onMove);
-  el.addEventListener("pointerup", onUp);
-  el.addEventListener("pointercancel", onUp);
+  document.body.classList.add("grabbing");
+  svg.addEventListener("pointermove", onMove);
+  svg.addEventListener("pointerup", onUp);
+  svg.addEventListener("pointercancel", onUp);
+  svg.addEventListener("lostpointercapture", onUp);
 }
 
-function onMove(e) {
+function dragFrame() {
   const d = R && R.dragging;
   if (!d) return;
-  const p = toSvgPoint($("boardYou"), e);
+  d.raf = 0;
+  d.pt.x = d.last.clientX; d.pt.y = d.last.clientY;
+  const p = d.pt.matrixTransform(d.inv);
   const x = Math.max(-LIMIT.x, Math.min(LIMIT.x, d.ox + (p.x - d.sx) / S));
   const y = Math.max(-LIMIT.y, Math.min(LIMIT.y, d.oy + (p.y - d.sy) / S));
   R.humanPos[d.i] = { x, y };
   d.el.setAttribute("transform", `translate(${x},${y})`);
 }
 
+function onMove(e) {
+  const d = R && R.dragging;
+  if (!d || e.pointerId !== d.pid) return;
+  d.last = e;
+  if (!d.raf) d.raf = requestAnimationFrame(dragFrame);   // one DOM write per frame
+}
+
+function endDrag(d, svg) {
+  if (d.raf) { cancelAnimationFrame(d.raf); d.raf = 0; dragFrame(); R.dragging = d; }
+  svg.removeEventListener("pointermove", onMove);
+  svg.removeEventListener("pointerup", onUp);
+  svg.removeEventListener("pointercancel", onUp);
+  svg.removeEventListener("lostpointercapture", onUp);
+  d.el.classList.remove("dragging");
+  document.body.classList.remove("grabbing");
+  try { svg.releasePointerCapture(d.pid); } catch (err) {}
+  if (R) R.dragging = null;
+}
+
 function onUp(e) {
   const d = R && R.dragging;
-  if (!d) return;
-  d.el.removeEventListener("pointermove", onMove);
-  d.el.removeEventListener("pointerup", onUp);
-  d.el.removeEventListener("pointercancel", onUp);
-  d.el.classList.remove("dragging");
-  try { d.el.releasePointerCapture(e.pointerId); } catch (err) {}
-  R.dragging = null;
+  if (!d || (e.pointerId !== undefined && e.pointerId !== d.pid)) return;
+  endDrag(d, $("boardYou"));
+}
+
+// Abort a drag cleanly when a round ends or restarts mid-drag.
+function cancelDrag() {
+  const d = R && R.dragging;
+  if (d) endDrag(d, $("boardYou"));
+}
+
+function resetPieces() {
+  if (!R || R.phase !== "play") return;
+  cancelDrag();
+  R.humanPos = clone(R.scatter);
+  applyPos($("boardYou"), R.humanPos);
+  setMsg("Pieces reset. Drag them back into place, then Submit.");
 }
 
 /* ---------- Menu wiring ---------- */
@@ -552,6 +625,7 @@ $("menuBtn").addEventListener("click", toMenu);
 $("toMenuBtn").addEventListener("click", toMenu);
 $("againBtn").addEventListener("click", newMatch);
 $("submitBtn").addEventListener("click", submit);
+$("resetBtn").addEventListener("click", resetPieces);
 $("nextBtn").addEventListener("click", startRound);
 
 document.addEventListener("keydown", e => {
@@ -582,6 +656,7 @@ $("folderIn").addEventListener("change", async e => {
   }
   if (!total) { setInfo("No usable images found in that folder."); return; }
   useDifficulty(currentDiff, loaded[currentDiff], `Loaded ${total} logos, but none for ${currentDiff}. Using built-in logos for this level.`);
+  updateCounts();
   if (loaded[currentDiff]) setInfo(`Loaded ${total} logos. ${currentDiff.toUpperCase()} has ${loaded[currentDiff].length}.`);
   show("menu");
 });
@@ -594,12 +669,13 @@ $("filesIn").addEventListener("change", async e => {
   const logos = await logosFromFiles(files);
   if (!logos.length) { setInfo("Those files are not usable images."); return; }
   useDifficulty(currentDiff, (loaded[currentDiff] || []).concat(logos));
+  updateCounts();
   show("menu");
 });
 
 (async function init() {
   markDiff();
-  await selectDifficulty(currentDiff);
+  await preloadAll();
 })();
 </script>
 </body>
