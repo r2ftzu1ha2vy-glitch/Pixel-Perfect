@@ -123,12 +123,15 @@
     <div class="row">
       <div><div class="label">Cut style</div>
         <select id="cutSel">
-          <option value="random" selected>Random</option>
+          <option value="random" selected>Auto (by difficulty)</option>
           <option value="2x1">Left / Right</option>
           <option value="1x2">Top / Bottom</option>
           <option value="2x2">2 x 2</option>
           <option value="3x2">3 x 2</option>
+          <option value="2x3">2 x 3</option>
           <option value="3x3">3 x 3</option>
+          <option value="4x3">4 x 3</option>
+          <option value="4x4">4 x 4</option>
         </select></div>
       <div><div class="label">Preview</div>
         <select id="prevSel">
@@ -211,7 +214,18 @@ function randomPlacement() {
 const MIN_SCATTER = 40;                // pieces start at least this far from the answer
 const MAXD = 80;                       // a piece this far (or more) off scores 0
 const DIFF = { easy: 18, medium: 9, hard: 4 };   // AI placement error (logo units)
-const SPLITS = { "2x1":[2,1], "1x2":[1,2], "2x2":[2,2], "3x2":[3,2], "3x3":[3,3] };
+const SPLITS = { "2x1":[2,1], "1x2":[1,2], "2x2":[2,2], "3x2":[3,2], "2x3":[2,3], "3x3":[3,3], "4x3":[4,3], "3x4":[3,4], "4x4":[4,4] };
+// "Auto" cut style picks from these by difficulty. Hard uses many small pieces and
+// uneven cut lines, so pieces no longer line up with the logo's own shapes.
+const AUTO_CUTS = { easy: ["2x1", "1x2", "2x2"], medium: ["2x2", "3x2", "2x3", "3x3"], hard: ["3x3", "4x3", "3x4", "4x4"] };
+const CUT_JITTER = { easy: 0, medium: 0.25, hard: 0.7 };   // how far cut lines wander off an even grid (fraction of a cell)
+
+function makeLines(n, jitter) {
+  const a = [0];
+  for (let i = 1; i < n; i++) a.push(i / n + (Math.random() - 0.5) * jitter / n);
+  a.push(1);
+  return a;
+}
 const DEFAULT_BG = "#eef0f6";
 const LEVELS = ["easy", "medium", "hard"];
 
@@ -238,16 +252,18 @@ const loaded = { easy: null, medium: null, hard: null };   // logos cached per d
 function imageLogo(src, name, w, h) {
   return {
     name, bg: DEFAULT_BG,
-    build(prefix, cols, rows) {
+    build(prefix, cols, rows, bounds) {
       const s = Math.min(200 / w, 200 / h);
       const iw = w * s, ih = h * s;
       const x0 = (200 - iw) / 2, y0 = (200 - ih) / 2;
-      const pw = iw / cols, ph = ih / rows;
+      const bx = (bounds && bounds.xs) || Array.from({ length: cols + 1 }, (_, i) => i / cols);
+      const by = (bounds && bounds.ys) || Array.from({ length: rows + 1 }, (_, i) => i / rows);
       const out = [];
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
         const cid = `${prefix}_${r}_${c}`;
-        out.push(`<clipPath id="${cid}"><rect x="${x0 + c * pw}" y="${y0 + r * ph}" width="${pw}" height="${ph}"/></clipPath>` +
-                 `<g clip-path="url(#${cid})"><rect class="hit" x="${x0 + c * pw}" y="${y0 + r * ph}" width="${pw}" height="${ph}" fill="#fff" fill-opacity="0.001"/><image href="${esc(src)}" x="${x0}" y="${y0}" width="${iw}" height="${ih}" preserveAspectRatio="none"/></g>`);
+        const rx = x0 + bx[c] * iw, ry = y0 + by[r] * ih, rw = (bx[c + 1] - bx[c]) * iw, rh = (by[r + 1] - by[r]) * ih;
+        out.push(`<clipPath id="${cid}"><rect x="${rx}" y="${ry}" width="${rw}" height="${rh}"/></clipPath>` +
+                 `<g clip-path="url(#${cid})"><rect class="hit" x="${rx}" y="${ry}" width="${rw}" height="${rh}" fill="#fff" fill-opacity="0.001"/><image href="${esc(src)}" x="${x0}" y="${y0}" width="${iw}" height="${ih}" preserveAspectRatio="none"/></g>`);
       }
       return out;
     }
@@ -383,8 +399,14 @@ function applyPos(svg, pos) {
   });
 }
 
+// Where the logo is built doesn't matter, only how the pieces sit relative to each other.
+function centroid(pos) {
+  return { x: pos.reduce((t, p) => t + p.x, 0) / pos.length, y: pos.reduce((t, p) => t + p.y, 0) / pos.length };
+}
+
 function accuracy(pos) {
-  const s = pos.reduce((t, p) => t + Math.max(0, 1 - Math.hypot(p.x, p.y) / MAXD), 0);
+  const m = centroid(pos);
+  const s = pos.reduce((t, p) => t + Math.max(0, 1 - Math.hypot(p.x - m.x, p.y - m.y) / MAXD), 0);
   return 100 * s / pos.length;
 }
 
@@ -437,13 +459,15 @@ function startRound() {
   roundNo++;
   const logo = nextLogo();
   let key = $("cutSel").value;
-  if (key === "random") key = pick(["2x1", "1x2", "2x2", "3x2"]);
+  if (key === "random") key = pick(AUTO_CUTS[currentDiff] || AUTO_CUTS.easy);
   const [cols, rows] = SPLITS[key];
+  const jit = key === $("cutSel").value ? 0 : (CUT_JITTER[currentDiff] || 0);
+  const bounds = { xs: makeLines(cols, jit), ys: makeLines(rows, jit) };
   const id = roundNo;
-  const hp = logo.build("h" + id, cols, rows);
-  const ap = logo.build("a" + id, cols, rows);
+  const hp = logo.build("h" + id, cols, rows, bounds);
+  const ap = logo.build("a" + id, cols, rows, bounds);
   const n = hp.length;
-  R = { id, logo, cols, rows, n, phase: "preview", humanPos: zeros(n), aiPos: zeros(n),
+  R = { id, logo, cols, rows, bounds, n, phase: "preview", humanPos: zeros(n), aiPos: zeros(n),
         scatter: null, timer: null, dragging: null };
   $("logoName").textContent = logo.name;
   setRoundInfo(`Round ${id}  ·  First to ${WIN_SCORE}`);
@@ -508,8 +532,13 @@ function submit() {
   animateAI(cur, cur.scatter, targets, 1600, () => {
     const aiAcc = accuracy(targets);
     $("accAI").textContent = aiAcc.toFixed(1) + "%";
-    $("boardYou").querySelector(".ghost").innerHTML = cur.logo.build("gh" + cur.id, cur.cols, cur.rows).join("");
-    $("boardAI").querySelector(".ghost").innerHTML = cur.logo.build("ga" + cur.id, cur.cols, cur.rows).join("");
+    const showGhost = (id, prefix, pos) => {
+      const g = $(id).querySelector(".ghost"), m = centroid(pos);
+      g.setAttribute("transform", `translate(${cur.off.x + m.x * S},${cur.off.y + m.y * S}) scale(${S})`);
+      g.innerHTML = cur.logo.build(prefix + cur.id, cur.cols, cur.rows, cur.bounds).join("");
+    };
+    showGhost("boardYou", "gh", cur.humanPos);   // ghost sits where YOU built it
+    showGhost("boardAI", "ga", targets);
     cur.phase = "done";
 
     const diff = humanAcc - aiAcc;
