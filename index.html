@@ -195,8 +195,19 @@ const ASSET_FILES = {
 };
 const WIN_SCORE = 3;
 const S = 0.8;                         // logo scale on the board
-const OFFSET = { x: 120, y: 70 };      // logo box position on the 400x300 board
-const LIMIT = { x: 130, y: 80 };       // max drag distance from the correct spot (logo units)
+const BOARD = { w: 400, h: 300, margin: 8 };   // board size and edge margin
+const BOX = 200 * S;                           // logo box size on the board (160)
+
+// Each round the finished logo sits at a random spot on the board (not always the middle).
+// Pieces can be dragged anywhere that keeps the logo box inside the board.
+function randomPlacement() {
+  const x = BOARD.margin + Math.random() * (BOARD.w - BOX - BOARD.margin * 2);
+  const y = BOARD.margin + Math.random() * (BOARD.h - BOX - BOARD.margin * 2);
+  const off = { x, y };
+  const lim = { minX: (BOARD.margin - x) / S, maxX: (BOARD.w - BOARD.margin - BOX - x) / S,
+                minY: (BOARD.margin - y) / S, maxY: (BOARD.h - BOARD.margin - BOX - y) / S };
+  return { off, lim };
+}
 const MIN_SCATTER = 40;                // pieces start at least this far from the answer
 const MAXD = 80;                       // a piece this far (or more) off scores 0
 const DIFF = { easy: 18, medium: 9, hard: 4 };   // AI placement error (logo units)
@@ -345,7 +356,7 @@ function nextLogo() {
 let R = null;
 let roundNo = 0, sYou = 0, sAI = 0;
 
-function renderBoard(svg, logo, pieces, mine) {
+function renderBoard(svg, logo, pieces, mine, OFFSET) {
   svg.parentNode.style.background = logo.bg;
   svg.innerHTML = `<rect width="400" height="300" fill="${logo.bg}"/>
     <g class="ghost" transform="translate(${OFFSET.x},${OFFSET.y}) scale(${S})" opacity="0.35" pointer-events="none"></g>
@@ -377,13 +388,13 @@ function accuracy(pos) {
   return 100 * s / pos.length;
 }
 
-function scatterPositions(n) {
+function scatterPositions(n, lim) {
   const out = [];
   for (let i = 0; i < n; i++) {
     let x, y, tries = 0;
     do {
-      x = (Math.random() * 2 - 1) * LIMIT.x;
-      y = (Math.random() * 2 - 1) * LIMIT.y;
+      x = lim.minX + Math.random() * (lim.maxX - lim.minX);
+      y = lim.minY + Math.random() * (lim.maxY - lim.minY);
       tries++;
     } while (Math.hypot(x, y) < MIN_SCATTER && tries < 200);
     out.push({ x, y });
@@ -436,8 +447,10 @@ function startRound() {
         scatter: null, timer: null, dragging: null };
   $("logoName").textContent = logo.name;
   setRoundInfo(`Round ${id}  ·  First to ${WIN_SCORE}`);
-  renderBoard($("boardYou"), logo, hp, true);
-  renderBoard($("boardAI"), logo, ap, false);
+  const place = randomPlacement();
+  R.off = place.off; R.lim = place.lim;
+  renderBoard($("boardYou"), logo, hp, true, place.off);
+  renderBoard($("boardAI"), logo, ap, false, place.off);
   $("accYou").textContent = ""; $("accAI").textContent = "";
   $("submitBtn").disabled = true; $("resetBtn").disabled = true; $("nextBtn").disabled = true;
 
@@ -457,7 +470,7 @@ function startRound() {
 
 function beginPlay() {
   if (!R) return;
-  R.scatter = scatterPositions(R.n);
+  R.scatter = scatterPositions(R.n, R.lim);
   R.humanPos = clone(R.scatter);
   R.aiPos = clone(R.scatter);
   applyPos($("boardYou"), R.humanPos);
@@ -549,8 +562,8 @@ function dragFrame() {
   d.raf = 0;
   d.pt.x = d.last.clientX; d.pt.y = d.last.clientY;
   const p = d.pt.matrixTransform(d.inv);
-  const x = Math.max(-LIMIT.x, Math.min(LIMIT.x, d.ox + (p.x - d.sx) / S));
-  const y = Math.max(-LIMIT.y, Math.min(LIMIT.y, d.oy + (p.y - d.sy) / S));
+  const x = Math.max(R.lim.minX, Math.min(R.lim.maxX, d.ox + (p.x - d.sx) / S));
+  const y = Math.max(R.lim.minY, Math.min(R.lim.maxY, d.oy + (p.y - d.sy) / S));
   R.humanPos[d.i] = { x, y };
   d.el.setAttribute("transform", `translate(${x},${y})`);
 }
