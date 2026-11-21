@@ -5,105 +5,186 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Logo Duel</title>
 <style>
-  :root { --bg:#12131a; --panel:#1c1e2a; --text:#e9eaf2; --accent:#7c8cff; --good:#3ddc97; --bad:#ff6b6b; }
+  :root { --bg1:#0b0d1a; --neon:#7c8cff; --pink:#ff4d8d; --good:#3ddc97; --bad:#ff5d6c; --warn:#ffb84d; --text:#f2f3ff; --panel:rgba(255,255,255,.07); }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font-family: system-ui, sans-serif;
-         display:flex; flex-direction:column; align-items:center; min-height:100vh; padding:16px; }
-  h1 { margin:8px 0 4px; font-size:1.5rem; }
-  #score { display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:center; font-size:1.05rem; margin:4px 0; }
-  .chip { background:var(--panel); padding:6px 14px; border-radius:999px; }
-  .chip b { font-size:1.3rem; }
-  #status { min-height:1.6em; margin:6px 0 10px; font-size:1.05rem; text-align:center; max-width:900px; }
-  #arena { width:min(98vw, 1000px); display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:12px; }
-  .card { background:var(--panel); border-radius:16px; padding:8px; box-shadow:0 8px 30px rgba(0,0,0,.4); }
-  .title { display:flex; justify-content:space-between; padding:2px 8px 6px; font-weight:600; }
-  .title span { font-variant-numeric: tabular-nums; }
-  svg.board { width:100%; height:auto; display:block; border-radius:12px; user-select:none; touch-action:none; }
+  html, body { height:100%; margin:0; }
+  body { background:
+           radial-gradient(1100px 700px at 15% -10%, #2d2183 0%, transparent 60%),
+           radial-gradient(900px 600px at 110% 110%, #6b1c52 0%, transparent 55%), var(--bg1);
+         color:var(--text); font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif; overflow:hidden; }
+  .screen { position:fixed; inset:0; display:flex; flex-direction:column; }
+  .hidden { display:none !important; }
+
+  /* ---- buttons ---- */
+  button, .btn { font:inherit; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#fff; cursor:pointer;
+    border:0; border-radius:14px; padding:14px 28px; background:var(--neon); box-shadow:0 5px 0 #4552c4, 0 10px 24px rgba(0,0,0,.35);
+    transition:transform .08s, box-shadow .08s, filter .15s; display:inline-block; }
+  button:hover, .btn:hover { filter:brightness(1.12); }
+  button:active, .btn:active { transform:translateY(4px); box-shadow:0 1px 0 #4552c4, 0 4px 10px rgba(0,0,0,.35); }
+  button:disabled { opacity:.35; cursor:not-allowed; filter:none; transform:none; box-shadow:0 5px 0 #4552c4; }
+  .ghostbtn { background:rgba(255,255,255,.1); box-shadow:0 5px 0 rgba(255,255,255,.12); }
+  .ghostbtn:active { box-shadow:0 1px 0 rgba(255,255,255,.12); }
+  .big { font-size:1.6rem; padding:18px 54px; background:linear-gradient(90deg,var(--pink),#ff8a4d); box-shadow:0 6px 0 #a82f5b, 0 14px 30px rgba(255,77,141,.35); }
+  .big:active { box-shadow:0 1px 0 #a82f5b; }
+  select { font:inherit; font-weight:700; color:var(--text); background:rgba(255,255,255,.1); border:2px solid rgba(255,255,255,.18);
+    border-radius:12px; padding:10px 14px; }
+  select option { color:#111; }
+
+  /* ---- main menu ---- */
+  #menu { padding:6vh 7vw; justify-content:center; }
+  #menu h1 { margin:0; font-size:clamp(3rem, 11vw, 8rem); line-height:.9; font-style:italic; font-weight:900; letter-spacing:.02em;
+    background:linear-gradient(90deg,#fff,var(--neon) 55%,var(--pink)); -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 6px 24px rgba(124,140,255,.4)); }
+  #menu .tag { margin:14px 0 30px; font-size:1.2rem; opacity:.8; }
+  .label { font-size:.8rem; letter-spacing:.2em; text-transform:uppercase; opacity:.65; margin:0 0 8px; }
+  #diffRow { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:28px; }
+  .dbtn { background:var(--panel); box-shadow:0 5px 0 rgba(255,255,255,.1); border:3px solid transparent; }
+  .dbtn[data-d="easy"].active   { background:rgba(61,220,151,.22); border-color:var(--good); box-shadow:0 5px 0 #1f8f63; }
+  .dbtn[data-d="medium"].active { background:rgba(255,184,77,.22); border-color:var(--warn); box-shadow:0 5px 0 #a8731e; }
+  .dbtn[data-d="hard"].active   { background:rgba(255,93,108,.22); border-color:var(--bad);  box-shadow:0 5px 0 #a8323e; }
+  #menuBtns { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  #menuInfo { margin-top:22px; min-height:1.4em; opacity:.7; font-size:.95rem; }
+
+  /* ---- settings ---- */
+  #settings { padding:6vh 7vw; justify-content:center; gap:18px; }
+  #settings h2 { margin:0 0 6px; font-size:2.4rem; font-style:italic; }
+  .row { display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+  .note { opacity:.6; font-size:.9rem; max-width:620px; line-height:1.4; }
+
+  /* ---- game ---- */
+  #hud { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; padding:14px 18px 8px; }
+  .side { display:flex; align-items:center; gap:12px; font-weight:900; font-size:1.4rem; letter-spacing:.1em; }
+  .side.ai { justify-content:flex-end; flex-direction:row-reverse; }
+  .side.you { color:var(--neon); } .side.ai { color:var(--pink); }
+  .pips { display:flex; gap:7px; }
+  .pips span { width:18px; height:18px; border-radius:50%; background:rgba(255,255,255,.14); transition:all .25s; }
+  .side.you .pips span.on { background:var(--neon); box-shadow:0 0 14px var(--neon); }
+  .side.ai .pips span.on { background:var(--pink); box-shadow:0 0 14px var(--pink); }
+  #hudMid { text-align:center; }
+  #logoName { font-size:clamp(1.6rem, 5vw, 3rem); font-weight:900; font-style:italic; letter-spacing:.06em; text-transform:uppercase; line-height:1;
+    text-shadow:0 0 24px rgba(124,140,255,.6); }
+  #roundInfo { margin-top:4px; font-size:.85rem; letter-spacing:.18em; text-transform:uppercase; opacity:.75; }
+  #roundInfo.win { color:var(--good); opacity:1; } #roundInfo.lose { color:var(--bad); opacity:1; } #roundInfo.tie { color:var(--warn); opacity:1; }
+  #arena { flex:1; min-height:0; display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:6px 14px 8px; }
+  .pane { position:relative; min-width:0; min-height:0; border-radius:18px; overflow:hidden; display:flex;
+          box-shadow:0 0 0 3px rgba(255,255,255,.12), 0 14px 40px rgba(0,0,0,.45); }
+  .pane.you { box-shadow:0 0 0 3px var(--neon), 0 14px 40px rgba(124,140,255,.25); }
+  .pane.ai  { box-shadow:0 0 0 3px var(--pink), 0 14px 40px rgba(255,77,141,.2); }
+  .pane .tag { position:absolute; left:12px; top:10px; z-index:2; font-weight:900; letter-spacing:.15em; font-size:.85rem;
+               background:rgba(0,0,0,.55); padding:4px 10px; border-radius:8px; }
+  .pane .acc { position:absolute; right:12px; top:8px; z-index:2; font-weight:900; font-size:1.6rem; font-variant-numeric:tabular-nums;
+               background:rgba(0,0,0,.6); padding:2px 12px; border-radius:10px; }
+  .pane .acc:empty { display:none; }
+  svg.board { flex:1; min-width:0; min-height:0; width:100%; height:100%; display:block; user-select:none; touch-action:none; }
   .piece.mine { cursor:grab; }
-  .piece.dragging { cursor:grabbing; filter: drop-shadow(0 4px 6px rgba(0,0,0,.5)); }
-  .controls { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; justify-content:center; align-items:center; }
-  button, .btn { background:var(--accent); color:#fff; border:0; padding:10px 18px; border-radius:10px;
-           font-size:1rem; cursor:pointer; display:inline-block; }
-  button.secondary, .btn.secondary { background:#2e3145; }
-  button:disabled { opacity:.4; cursor:not-allowed; }
-  select { background:#2e3145; color:var(--text); border:0; border-radius:10px; padding:9px 10px; font-size:1rem; }
-  .hint { font-size:.85rem; opacity:.7; margin-top:10px; text-align:center; max-width:760px; line-height:1.4; }
-  #flash { position:fixed; inset:0; display:none; align-items:center; justify-content:center;
-           background:rgba(0,0,0,.7); z-index:10; }
-  #flash .card { padding:28px 36px; text-align:center; max-width:90vw; }
-  #flash h2 { margin:0 0 8px; }
+  .piece.dragging { cursor:grabbing; filter:drop-shadow(0 6px 8px rgba(0,0,0,.5)); }
+  #bar { display:flex; align-items:center; gap:14px; padding:6px 18px 16px; }
+  #msg { flex:1; opacity:.85; font-size:1rem; min-width:0; }
+  @media (max-width:760px) {
+    #arena { grid-template-columns:1fr; grid-template-rows:1fr 1fr; }
+    #hud { grid-template-columns:1fr 1fr; } #hudMid { grid-column:1 / -1; grid-row:1; }
+    .side { font-size:1.1rem; }
+    #bar { flex-wrap:wrap; } #msg { flex-basis:100%; order:-1; }
+  }
+
+  /* ---- match over ---- */
+  #flash { position:fixed; inset:0; display:none; align-items:center; justify-content:flex-start; padding:0 8vw;
+           background:rgba(5,6,15,.82); z-index:10; }
+  #flash .box { max-width:560px; }
+  #flash h2 { margin:0 0 10px; font-size:clamp(2.4rem, 8vw, 4.5rem); font-style:italic; font-weight:900; line-height:1; }
+  #flash p { margin:0 0 24px; font-size:1.15rem; opacity:.85; }
+  #flash .row { gap:14px; }
 </style>
 </head>
 <body>
-  <h1>Logo Duel</h1>
-  <div id="score">
-    <span class="chip">You <b id="sYou">0</b></span>
-    <span>first to 3</span>
-    <span class="chip">AI <b id="sAI">0</b></span>
-    <span>Round <b id="rnd">0</b></span>
-  </div>
-  <div id="status">Loading logos...</div>
 
-  <div id="arena">
-    <div class="card"><div class="title">You <span id="accYou"></span></div>
-      <svg id="boardYou" class="board" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg"></svg></div>
-    <div class="card"><div class="title">AI <span id="accAI"></span></div>
-      <svg id="boardAI" class="board" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg"></svg></div>
-  </div>
-
-  <div class="controls">
-    <button id="startBtn">Start match</button>
-    <button id="submitBtn" disabled>Submit</button>
-    <button id="nextBtn" class="secondary" disabled>Next round</button>
-  </div>
-  <div class="controls">
-    <label>Difficulty
-      <select id="diffSel">
-        <option value="easy">Easy</option>
-        <option value="medium" selected>Medium</option>
-        <option value="hard">Hard</option>
-      </select>
-    </label>
-    <label>Cut
-      <select id="cutSel">
-        <option value="random" selected>Random</option>
-        <option value="2x1">Left / Right</option>
-        <option value="1x2">Top / Bottom</option>
-        <option value="2x2">2 x 2</option>
-        <option value="3x2">3 x 2</option>
-        <option value="3x3">3 x 3</option>
-      </select>
-    </label>
-    <label>Preview
-      <select id="prevSel">
-        <option value="0" selected>None</option>
-        <option value="3">3 s</option>
-        <option value="6">6 s</option>
-      </select>
-    </label>
-  </div>
-  <div class="controls">
-    <label class="btn secondary">Load assets folder
-      <input type="file" id="folderIn" webkitdirectory multiple hidden>
-    </label>
-    <label class="btn secondary">Add images
-      <input type="file" id="filesIn" accept="image/*" multiple hidden>
-    </label>
-  </div>
-  <div class="hint">
-    Drag your pieces to rebuild the logo, then hit Submit. The AI places its pieces too. Whoever is closer to the real layout (higher accuracy %) takes the round. First to 3 round wins takes the match.
-    Logos load from <b>assets/easy</b>, <b>assets/medium</b> and <b>assets/hard</b> next to this file, depending on the difficulty you pick (harder levels also mean a sharper AI). If they don't show up, click "Load assets folder" and pick your assets folder.
+  <!-- MAIN MENU -->
+  <div id="menu" class="screen">
+    <h1>LOGO<br>DUEL</h1>
+    <div class="tag">Rebuild the logo from memory. Beat the AI.</div>
+    <div class="label">Difficulty</div>
+    <div id="diffRow">
+      <button class="dbtn active" data-d="easy">Easy</button>
+      <button class="dbtn" data-d="medium">Medium</button>
+      <button class="dbtn" data-d="hard">Hard</button>
+    </div>
+    <div id="menuBtns">
+      <button id="playBtn" class="big">Play</button>
+      <button id="settingsBtn" class="ghostbtn">Settings</button>
+    </div>
+    <div id="menuInfo">Loading logos...</div>
   </div>
 
-  <div id="flash"><div class="card"><h2 id="flashTitle"></h2><p id="flashBody"></p>
-    <button id="flashBtn">New match</button></div></div>
+  <!-- SETTINGS -->
+  <div id="settings" class="screen hidden">
+    <h2>SETTINGS</h2>
+    <div class="row">
+      <div><div class="label">Cut style</div>
+        <select id="cutSel">
+          <option value="random" selected>Random</option>
+          <option value="2x1">Left / Right</option>
+          <option value="1x2">Top / Bottom</option>
+          <option value="2x2">2 x 2</option>
+          <option value="3x2">3 x 2</option>
+          <option value="3x3">3 x 3</option>
+        </select></div>
+      <div><div class="label">Preview</div>
+        <select id="prevSel">
+          <option value="0" selected>None</option>
+          <option value="3">3 seconds</option>
+          <option value="6">6 seconds</option>
+        </select></div>
+    </div>
+    <div>
+      <div class="label">Logo images</div>
+      <div class="row">
+        <label class="btn ghostbtn">Load assets folder<input type="file" id="folderIn" webkitdirectory multiple hidden></label>
+        <label class="btn ghostbtn">Add images<input type="file" id="filesIn" accept="image/*" multiple hidden></label>
+      </div>
+    </div>
+    <div class="note">Logos come from assets/easy, assets/medium and assets/hard next to this file. If they don't load, use "Load assets folder" and pick your assets folder. "Add images" adds loose images to the selected difficulty.</div>
+    <div><button id="backBtn">Back</button></div>
+  </div>
+
+  <!-- GAME -->
+  <div id="game" class="screen hidden">
+    <div id="hud">
+      <div class="side you">YOU <div class="pips" id="pYou"></div></div>
+      <div id="hudMid"><div id="logoName"></div><div id="roundInfo"></div></div>
+      <div class="side ai">AI <div class="pips" id="pAI"></div></div>
+    </div>
+    <div id="arena">
+      <div class="pane you"><div class="tag">YOU</div><div class="acc" id="accYou"></div>
+        <svg id="boardYou" class="board" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <div class="pane ai"><div class="tag">AI</div><div class="acc" id="accAI"></div>
+        <svg id="boardAI" class="board" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    </div>
+    <div id="bar">
+      <button id="menuBtn" class="ghostbtn">Menu</button>
+      <div id="msg"></div>
+      <button id="submitBtn" disabled>Submit</button>
+      <button id="nextBtn" disabled>Next round</button>
+    </div>
+  </div>
+
+  <!-- MATCH OVER -->
+  <div id="flash">
+    <div class="box">
+      <h2 id="flashTitle"></h2>
+      <p id="flashBody"></p>
+      <div class="row">
+        <button id="againBtn">Play again</button>
+        <button id="toMenuBtn" class="ghostbtn">Main menu</button>
+      </div>
+    </div>
+  </div>
 
 <script>
 "use strict";
 
 /* ---------- Config ---------- */
-// Used when the page can't list the assets folder itself (opened straight from disk).
-// Edit these to match your file names, or just use the "Load assets folder" button.
+// Used when the page can't list the assets folders itself (opened straight from disk).
+// Edit these to match your file names, or use "Load assets folder" in Settings.
 const ASSET_FILES = {
   easy:   ["assets/easy/Apple_Logo.svg", "assets/easy/Nike.png", "assets/easy/YouTube.png"],
   medium: ["assets/medium/Netflix.png", "assets/medium/WhatsApp.png"],
@@ -118,6 +199,7 @@ const MAXD = 80;                       // a piece this far (or more) off scores 
 const DIFF = { easy: 18, medium: 9, hard: 4 };   // AI placement error (logo units)
 const SPLITS = { "2x1":[2,1], "1x2":[1,2], "2x2":[2,2], "3x2":[3,2], "3x3":[3,3] };
 const DEFAULT_BG = "#eef0f6";
+const LEVELS = ["easy", "medium", "hard"];
 
 /* ---------- Helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -127,11 +209,16 @@ function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { co
 function gauss() { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 const zeros = n => Array.from({ length: n }, () => ({ x: 0, y: 0 }));
 const clone = a => a.map(p => ({ x: p.x, y: p.y }));
-function setStatus(t) { $("status").textContent = t; }
+function setMsg(t) { $("msg").textContent = t; }
+function setInfo(t) { $("menuInfo").textContent = t; }
+function show(id) {
+  ["menu", "settings", "game"].forEach(s => $(s).classList.toggle("hidden", s !== id));
+}
 
 /* ---------- Logo catalog ---------- */
 let catalog = [];
 let deck = [];
+let currentDiff = "easy";
 const loaded = { easy: null, medium: null, hard: null };   // logos cached per difficulty
 
 function imageLogo(src, name, w, h) {
@@ -196,8 +283,7 @@ async function discoverAssets(diff) {
   } catch (e) { /* opened from disk: fall back to the list */ }
   if (!list.length) list = (ASSET_FILES[diff] || []).slice();
   list = Array.from(new Set(list));
-  const logos = (await Promise.all(list.map(f => probe(f, nameFromFile(f))))).filter(Boolean);
-  return logos;
+  return (await Promise.all(list.map(f => probe(f, nameFromFile(f))))).filter(Boolean);
 }
 
 async function logosFromFiles(files) {
@@ -212,10 +298,10 @@ function useDifficulty(diff, logos, fallbackMsg) {
   const label = diff.charAt(0).toUpperCase() + diff.slice(1);
   if (logos && logos.length) {
     catalog = logos; loaded[diff] = logos;
-    setStatus(`${label}: ${logos.length} logo${logos.length === 1 ? "" : "s"} loaded from assets/${diff}. Press Start match.`);
+    setInfo(`${label}: ${logos.length} logo${logos.length === 1 ? "" : "s"} ready.`);
   } else {
     catalog = BUILTIN.slice();
-    setStatus(fallbackMsg || `${label}: no images found in assets/${diff}. Using built-in logos. Click "Load assets folder" to use yours.`);
+    setInfo(fallbackMsg || `${label}: no images found in assets/${diff}. Using built-in logos. Open Settings to load your assets folder.`);
   }
 }
 
@@ -234,7 +320,8 @@ let R = null;
 let roundNo = 0, sYou = 0, sAI = 0;
 
 function renderBoard(svg, logo, pieces, mine) {
-  svg.innerHTML = `<rect width="400" height="300" rx="12" fill="${logo.bg}"/>
+  svg.parentNode.style.background = logo.bg;
+  svg.innerHTML = `<rect width="400" height="300" fill="${logo.bg}"/>
     <g class="ghost" transform="translate(${OFFSET.x},${OFFSET.y}) scale(${S})" opacity="0.35" pointer-events="none"></g>
     <g class="logoGroup" transform="translate(${OFFSET.x},${OFFSET.y}) scale(${S})">
     ${pieces.map((p, i) => `<g class="piece${mine ? " mine" : ""}" data-i="${i}">${p}</g>`).join("")}
@@ -268,22 +355,38 @@ function scatterPositions(n) {
   return out;
 }
 
-function newMatch() {
-  if (R && R.timer) clearInterval(R.timer);
-  R = null; roundNo = 0; sYou = 0; sAI = 0;
-  updateScore();
-  $("flash").style.display = "none";
-  startRound();
+function renderPips(el, n) {
+  el.innerHTML = Array.from({ length: WIN_SCORE }, (_, i) => `<span class="${i < n ? "on" : ""}"></span>`).join("");
+}
+
+function setRoundInfo(text, cls) {
+  const el = $("roundInfo");
+  el.textContent = text;
+  el.className = cls || "";
 }
 
 function updateScore() {
-  $("sYou").textContent = sYou; $("sAI").textContent = sAI; $("rnd").textContent = roundNo;
+  renderPips($("pYou"), sYou);
+  renderPips($("pAI"), sAI);
+}
+
+function stopRound() {
+  if (R && R.timer) clearInterval(R.timer);
+  R = null;
+}
+
+function newMatch() {
+  stopRound();
+  roundNo = 0; sYou = 0; sAI = 0;
+  $("flash").style.display = "none";
+  updateScore();
+  startRound();
 }
 
 function startRound() {
-  if (!catalog.length) setCatalog([]);
-  if (R && R.timer) clearInterval(R.timer);
-  roundNo++; updateScore();
+  if (!catalog.length) useDifficulty(currentDiff, []);
+  stopRound();
+  roundNo++;
   const logo = nextLogo();
   let key = $("cutSel").value;
   if (key === "random") key = pick(["2x1", "1x2", "2x2", "3x2"]);
@@ -294,20 +397,21 @@ function startRound() {
   const n = hp.length;
   R = { id, logo, cols, rows, n, phase: "preview", humanPos: zeros(n), aiPos: zeros(n),
         scatter: null, timer: null, dragging: null };
+  $("logoName").textContent = logo.name;
+  setRoundInfo(`Round ${id}  ·  First to ${WIN_SCORE}`);
   renderBoard($("boardYou"), logo, hp, true);
   renderBoard($("boardAI"), logo, ap, false);
   $("accYou").textContent = ""; $("accAI").textContent = "";
   $("submitBtn").disabled = true; $("nextBtn").disabled = true;
-  $("startBtn").textContent = "Restart match";
 
   const secs = +$("prevSel").value;
   if (secs > 0) {
     let left = secs;
-    setStatus(`Round ${id}: memorize it! Scatter in ${left}s`);
+    setMsg(`Memorize it! Pieces scatter in ${left}s`);
     R.timer = setInterval(() => {
       left--;
       if (left <= 0) { clearInterval(R.timer); beginPlay(); }
-      else setStatus(`Round ${id}: memorize it! Scatter in ${left}s`);
+      else setMsg(`Memorize it! Pieces scatter in ${left}s`);
     }, 1000);
   } else {
     beginPlay();
@@ -323,7 +427,7 @@ function beginPlay() {
   applyPos($("boardAI"), R.aiPos);
   R.phase = "play";
   $("submitBtn").disabled = false;
-  setStatus(`Round ${R.id}: rebuild the logo from memory, then Submit.`);
+  setMsg("Drag the pieces to rebuild the logo, then Submit.");
 }
 
 function animateAI(cur, from, to, ms, done) {
@@ -346,33 +450,29 @@ function submit() {
   $("submitBtn").disabled = true;
   const humanAcc = accuracy(cur.humanPos);
   $("accYou").textContent = humanAcc.toFixed(1) + "%";
-  setStatus("AI is placing its pieces...");
+  setMsg("AI is placing its pieces...");
 
-  const sigma = DIFF[$("diffSel").value] * (0.6 + Math.random() * 0.8);
+  const sigma = DIFF[currentDiff] * (0.6 + Math.random() * 0.8);
   const targets = cur.scatter.map(() => ({ x: gauss() * sigma, y: gauss() * sigma }));
   animateAI(cur, cur.scatter, targets, 1600, () => {
     const aiAcc = accuracy(targets);
     $("accAI").textContent = aiAcc.toFixed(1) + "%";
-    const ghostYou = cur.logo.build("gh" + cur.id, cur.cols, cur.rows).join("");
-    const ghostAI = cur.logo.build("ga" + cur.id, cur.cols, cur.rows).join("");
-    $("boardYou").querySelector(".ghost").innerHTML = ghostYou;
-    $("boardAI").querySelector(".ghost").innerHTML = ghostAI;
+    $("boardYou").querySelector(".ghost").innerHTML = cur.logo.build("gh" + cur.id, cur.cols, cur.rows).join("");
+    $("boardAI").querySelector(".ghost").innerHTML = cur.logo.build("ga" + cur.id, cur.cols, cur.rows).join("");
     cur.phase = "done";
 
     const diff = humanAcc - aiAcc;
-    let msg;
-    if (Math.abs(diff) < 0.05) { msg = `Tie at ${humanAcc.toFixed(1)}%. No point this round.`; }
-    else if (diff > 0) { sYou++; msg = `You win the round: ${humanAcc.toFixed(1)}% vs ${aiAcc.toFixed(1)}%.`; }
-    else { sAI++; msg = `AI wins the round: ${aiAcc.toFixed(1)}% vs ${humanAcc.toFixed(1)}%.`; }
+    if (Math.abs(diff) < 0.05) { setRoundInfo("Tie. No point", "tie"); setMsg("Dead heat. Next round."); }
+    else if (diff > 0) { sYou++; setRoundInfo("You win the round!", "win"); setMsg(`${humanAcc.toFixed(1)}% beats ${aiAcc.toFixed(1)}%.`); }
+    else { sAI++; setRoundInfo("AI wins the round", "lose"); setMsg(`${aiAcc.toFixed(1)}% beats ${humanAcc.toFixed(1)}%.`); }
     updateScore();
-    setStatus(`${cur.logo.name}: ${msg}`);
 
     if (sYou >= WIN_SCORE || sAI >= WIN_SCORE) {
       const won = sYou >= WIN_SCORE;
-      $("flashTitle").textContent = won ? "You win the match!" : "AI wins the match";
+      $("flashTitle").textContent = won ? "YOU WIN!" : "AI WINS";
       $("flashTitle").style.color = won ? "var(--good)" : "var(--bad)";
       $("flashBody").textContent = `Final score: You ${sYou} - ${sAI} AI after ${roundNo} rounds.`;
-      $("flash").style.display = "flex";
+      setTimeout(() => { if (R === cur) $("flash").style.display = "flex"; }, 900);
     } else {
       $("nextBtn").disabled = false;
     }
@@ -421,13 +521,44 @@ function onUp(e) {
   R.dragging = null;
 }
 
-/* ---------- Wiring ---------- */
-$("startBtn").addEventListener("click", newMatch);
+/* ---------- Menu wiring ---------- */
+function markDiff() {
+  document.querySelectorAll(".dbtn").forEach(b => b.classList.toggle("active", b.dataset.d === currentDiff));
+}
+
+document.querySelectorAll(".dbtn").forEach(b => b.addEventListener("click", async () => {
+  currentDiff = b.dataset.d;
+  markDiff();
+  await selectDifficulty(currentDiff);
+}));
+
+$("playBtn").addEventListener("click", async () => {
+  $("playBtn").disabled = true;
+  await selectDifficulty(currentDiff);
+  $("playBtn").disabled = false;
+  show("game");
+  newMatch();
+});
+
+$("settingsBtn").addEventListener("click", () => show("settings"));
+$("backBtn").addEventListener("click", () => show("menu"));
+
+function toMenu() {
+  stopRound();
+  $("flash").style.display = "none";
+  show("menu");
+}
+$("menuBtn").addEventListener("click", toMenu);
+$("toMenuBtn").addEventListener("click", toMenu);
+$("againBtn").addEventListener("click", newMatch);
 $("submitBtn").addEventListener("click", submit);
 $("nextBtn").addEventListener("click", startRound);
-$("flashBtn").addEventListener("click", newMatch);
 
-const LEVELS = ["easy", "medium", "hard"];
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter" || $("game").classList.contains("hidden")) return;
+  if (!$("submitBtn").disabled) submit();
+  else if (!$("nextBtn").disabled) startRound();
+});
 
 // Pick the "assets" folder (or any of easy / medium / hard inside it). Files are sorted by their folder name.
 $("folderIn").addEventListener("change", async e => {
@@ -435,7 +566,6 @@ $("folderIn").addEventListener("change", async e => {
   e.target.value = "";
   if (!files.length) return;
   const groups = { easy: [], medium: [], hard: [] };
-  const cur = $("diffSel").value;
   let grouped = false;
   const loose = [];
   files.forEach(f => {
@@ -443,37 +573,33 @@ $("folderIn").addEventListener("change", async e => {
     const lvl = LEVELS.find(l => parts.includes(l));
     if (lvl) { groups[lvl].push(f); grouped = true; } else loose.push(f);
   });
-  if (!grouped) groups[cur] = loose;   // folder had no easy/medium/hard subfolders: use it for the current level
+  if (!grouped) groups[currentDiff] = loose;   // no easy/medium/hard subfolders: use it for the selected level
   let total = 0;
   for (const l of LEVELS) {
     if (!groups[l].length) continue;
     const logos = await logosFromFiles(groups[l]);
     if (logos.length) { loaded[l] = logos; total += logos.length; }
   }
-  if (!total) { setStatus("No usable images found in that folder."); return; }
-  useDifficulty(cur, loaded[cur], `Loaded ${total} logos, but none for ${cur}. Using built-in logos for this level.`);
-  if (loaded[cur]) setStatus(`Loaded ${total} logos total. ${cur.toUpperCase()} has ${loaded[cur].length}. Press Start match.`);
+  if (!total) { setInfo("No usable images found in that folder."); return; }
+  useDifficulty(currentDiff, loaded[currentDiff], `Loaded ${total} logos, but none for ${currentDiff}. Using built-in logos for this level.`);
+  if (loaded[currentDiff]) setInfo(`Loaded ${total} logos. ${currentDiff.toUpperCase()} has ${loaded[currentDiff].length}.`);
+  show("menu");
 });
 
-// Add loose images to the currently selected difficulty.
+// Add loose images to the selected difficulty.
 $("filesIn").addEventListener("change", async e => {
   const files = Array.from(e.target.files || []);
   e.target.value = "";
   if (!files.length) return;
   const logos = await logosFromFiles(files);
-  if (!logos.length) { setStatus("Those files are not usable images."); return; }
-  const cur = $("diffSel").value;
-  useDifficulty(cur, (loaded[cur] || []).concat(logos));
-});
-
-// Changing difficulty swaps the image folder and the AI strength, and restarts the match.
-$("diffSel").addEventListener("change", async () => {
-  await selectDifficulty($("diffSel").value);
-  if (R) newMatch();
+  if (!logos.length) { setInfo("Those files are not usable images."); return; }
+  useDifficulty(currentDiff, (loaded[currentDiff] || []).concat(logos));
+  show("menu");
 });
 
 (async function init() {
-  await selectDifficulty($("diffSel").value);
+  markDiff();
+  await selectDifficulty(currentDiff);
 })();
 </script>
 </body>
