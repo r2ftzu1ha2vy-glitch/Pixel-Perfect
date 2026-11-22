@@ -358,7 +358,7 @@ function randomPlacement() {
 const MIN_SCATTER = 40;                // pieces start at least this far from the answer
 const MAXD = 80;                       // a piece this far (or more) off scores 0
 const DIFF = { easy: 11, medium: 5.5, hard: 2.2, insane: 1.1 };   // AI placement error (logo units): lower = stronger AI
-const TIME_LIMIT = { easy: 30, medium: 60, hard: 90, insane: 120 };   // seconds per round
+const TIME_LIMIT = { easy: 30, medium: 60, hard: 90, insane: 300 };   // seconds per round
 const SPLITS = { "2x1":[2,1], "1x2":[1,2], "2x2":[2,2], "3x2":[3,2], "2x3":[2,3], "3x3":[3,3], "4x3":[4,3], "3x4":[3,4], "4x4":[4,4], "5x4":[5,4], "4x5":[4,5] };
 // "Auto" cut style picks from these by difficulty. Hard uses many small pieces and
 // uneven cut lines, so pieces no longer line up with the logo's own shapes.
